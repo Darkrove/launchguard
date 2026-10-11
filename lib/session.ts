@@ -1,28 +1,57 @@
-let cookieCache: string | null = null;
+import { chromium } from "playwright";
 
-export async function getArgosCookie() {
-  if (cookieCache) {
+let cookieCache: string | null = null;
+let expiresAt = 0;
+
+export async function getArgosSession(sku: string){
+  const now = Date.now();
+
+  if (cookieCache && now < expiresAt) {
     return cookieCache;
   }
 
-  const res = await fetch("https://www.argos.co.uk", {
-    headers: {
-      "User-Agent": "Thunder Client (https://www.thunderclient.com)",
-      Accept: "*/*",
-    },
+  const browser = await chromium.launch({
+    headless: true,
   });
 
-  const cookie = res.headers.get("set-cookie");
+  try {
+    const page = await browser.newPage();
 
-  if (!cookie) {
-    throw new Error("Failed to obtain Argos session cookie");
+    await page.goto(`https://www.argos.co.uk/product/${sku}`, {
+      waitUntil: "networkidle",
+    });
+
+    await page.waitForTimeout(15000);
+
+    const cookies = await page.context().cookies();
+
+    console.table(
+      cookies.map((c) => ({
+        name: c.name,
+        expires: c.expires,
+      }))
+    );
+    
+    const cookieString = cookies
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+
+    console.log(
+      "Cookies found:",
+      cookies.map((c) => c.name)
+    );
+
+    cookieCache = cookieString;
+
+    expiresAt = Date.now() + 1000 * 60 * 60;
+
+    return cookieString;
+  } finally {
+    await browser.close();
   }
-
-  cookieCache = cookie;
-
-  return cookieCache;
 }
 
-export function clearArgosCookie() {
+export function clearArgosSession() {
   cookieCache = null;
+  expiresAt = 0;
 }

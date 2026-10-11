@@ -1,40 +1,58 @@
-import { clearArgosCookie, getArgosCookie } from "./session";
+import axios from "axios";
+import {
+  getArgosSession,
+  clearArgosSession,
+} from "./session";
 
 const BASE_URL =
   "https://www.argos.co.uk/stores/api/orchestrator/v0/cis-locator/availability";
 
 export async function fetchSku(sku: string) {
-  const request = async () => {
-    const cookie = await getArgosCookie();
-    
-    const url =
-      `${BASE_URL}` +
-      `?maxDistance=50` +
-      `&maxResults=10` +
-      `&skuQty=${sku}_1` +
-      `&channel=web_pdp`;
+  async function makeRequest() {
+    const cookie = await getArgosSession(sku);
 
-    const response = await fetch(url, {
+    return axios.get(BASE_URL, {
+      params: {
+        maxDistance: 50,
+        maxResults: 10,
+        skuQty: `${sku}_1`,
+        channel: "web_pdp",
+        timestamp: Date.now(),
+      },
       headers: {
         Cookie: cookie,
-        "User-Agent": "Thunder Client (https://www.thunderclient.com)",
-        Accept: "*/*",
+        Accept: "application/json",
+
+        Referer: `https://www.argos.co.uk/product/${sku}/`,
+
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
       },
+      validateStatus: () => true,
     });
+  }
 
-    return response;
-  };
-
-  let response = await request();
+  let response = await makeRequest();
 
   if ([400, 401, 403].includes(response.status)) {
-    clearArgosCookie();
-    response = await request();
+    console.log("Refreshing browser session");
+
+    clearArgosSession();
+
+    response = await makeRequest();
   }
 
-  if (!response.ok) {
-    throw new Error(`Argos returned ${response.status}`);
+  if (response.status >= 400) {
+    console.error(response.data);
+
+    throw new Error(
+      `Argos returned ${response.status}`
+    );
   }
 
-  return response.json();
+  return response.data;
 }
